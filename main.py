@@ -13,6 +13,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from dataclasses import dataclass
+import sys
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -107,22 +110,38 @@ DATA = {
     ],
 }
 
-WORLD_CUTOFFS = [
-    {"date": "2019-08", "label": "Start of Middle School"},
-    {"date": "2020-03", "label": "COVID-19 Lockdowns"},
-    {"date": "2021-08", "label": "Start of High School"},
-    {"date": "2023-12", "label": "End of Time in Marching Band"},
-    {
-        "date": "2025-07",
-        "label": "Start of University",
-    },  # One month earlier to avoid clipping
-]
 
-TRANSITION_CUTOFFS = [
-    {"date": "2025-09", "label": "Egg Crack"},
-    {"date": "2026-02", "label": "Social Transition"},
-    {"date": "2026-05", "label": "HRT"},
-]
+@dataclass
+class CutOff:
+    date: str
+    label: str
+    line_color: str = "#505050"
+    text_color: str = "#505050"
+
+
+CUTOFFS: dict[str, list[CutOff]] = {
+    "transition": [
+        CutOff("2025-09", "Egg Crack", "#3e8eab", "#F5A9B8"),
+        CutOff("2026-02", "Social Transition", "#3e8eab", "#F5A9B8"),
+        CutOff("2026-05", "HRT", "#3e8eab", "#F5A9B8"),
+    ],
+    "school": [
+        CutOff("2019-08", "Start of Middle School"),
+        CutOff("2021-08", "Start of High School"),
+        CutOff(
+            "2025-07", "Start of University"
+        ),  # One month earlier to avoid clipping with transition timelines
+    ],
+    "event": [
+        CutOff("2020-03", "COVID-19 Lockdowns"),
+        CutOff("2021-01", "Biden Presidency"),
+        CutOff("2025-01", "Trump Presidency"),
+    ],
+    "life": [
+        CutOff("2021-11", "Transition to MKA"),
+        CutOff("2023-05", "End of Time in Band"),
+    ],
+}
 
 
 def main():
@@ -141,31 +160,34 @@ def main():
         alpha=0.75,
         edgecolor="none",
         align="center",
-        label="Monthly Count",
+        label=f"Monthly Count (0-{SELFIE_Y_AXIS})",
     )
 
     # Aggragate selfies
     y_cumulative = df["Selfies"].cumsum().values
 
-    # Also have separate lines for
-    # before and after egg crack
-    egg_crack_date = pd.to_datetime(TRANSITION_CUTOFFS[0]["date"], format="%Y-%m")
-    before_mask = df["Timestamp"] <= egg_crack_date
-    after_mask = df["Timestamp"] >= egg_crack_date
-    df_before = df[before_mask].copy()
-    df_after = df[after_mask].copy()
-    y_cum_before = df_before["Selfies"].cumsum().values
-    y_cum_after = df_after["Selfies"].cumsum().values
-    x_before = x_numeric[before_mask]
-    x_after = x_numeric[after_mask]
-
-    pre_egg_crack_total = y_cum_before[-1] if len(y_cum_before) > 0 else 0
-    post_egg_crack_total = y_cum_after[-1] if len(y_cum_after) > 0 else 0
-    print("Total selfies of all time:", pre_egg_crack_total + post_egg_crack_total)
-    print("Pre egg-crack total:", pre_egg_crack_total)
-    print("Post egg-crack total:", post_egg_crack_total)
-
     ax2 = ax.twinx()
+    if "--q-mean" in sys.argv:
+        df_time_indexed = df.set_index("Timestamp").sort_index()
+        df_monthly_filled = df_time_indexed.resample("MS").asfreq().fillna(0)
+        df_quarterly_average = df_monthly_filled.resample("QE")["Selfies"].mean()
+
+        x_quar_average = df_quarterly_average.index
+        y_quar_average = df_quarterly_average.values
+
+        ax2.plot(
+            x_quar_average,
+            y_quar_average,
+            color="#ff0000",
+            linewidth=2,
+            linestyle="-",
+            drawstyle="steps-post",
+            label=f"Quarterly Average (0-{SELFIE_Y_AXIS})",
+        )
+        ax2.fill_between(
+            x_quar_average, y_quar_average, step="post", color="#ff0000", alpha=0.05
+        )
+
     ax2.plot(
         x_numeric,
         y_cumulative,
@@ -173,31 +195,43 @@ def main():
         linewidth=2,
         linestyle="-",
         drawstyle="steps-post",
-        label="All-Time Cumulative Total",
+        label=f"All-Time Cumulative Total (0-{SELFIE_Y_AXIS*CUMULATIVE_SCALE_FACTOR})",
     )
     ax2.fill_between(x_numeric, y_cumulative, step="post", color="#2ca02c", alpha=0.05)
 
-    ax2.hlines(
-        y=pre_egg_crack_total,
-        xmin=mdates.date2num(egg_crack_date),
-        xmax=mdates.date2num(df["Timestamp"].iloc[-1]),
-        color="#d62728",
-        linewidth=2,
-        linestyle=":",
-        alpha=0.8,
-        label=f"Cumulative Selfies at Egg Crack ({pre_egg_crack_total})",
-    )
+    if "--sum-egg-crack" in sys.argv:
+        egg_crack_date = pd.to_datetime(CUTOFFS["transition"][0].date, format="%Y-%m")
+        before_mask = df["Timestamp"] <= egg_crack_date
+        after_mask = df["Timestamp"] >= egg_crack_date
+        df_before = df[before_mask].copy()
+        df_after = df[after_mask].copy()
+        y_cum_before = df_before["Selfies"].cumsum().values
+        y_cum_after = df_after["Selfies"].cumsum().values
+        x_after = x_numeric[after_mask]
 
-    ax2.plot(
-        x_after,
-        y_cum_after,
-        color="#9467bd",
-        linewidth=1.5,
-        linestyle="-",
-        drawstyle="steps-post",
-        label="Cumulative (From Egg Crack Forward)",
-    )
-    ax2.fill_between(x_after, y_cum_after, step="post", color="#9467bd", alpha=0.15)
+        pre_egg_crack_total = y_cum_before[-1] if len(y_cum_before) > 0 else 0
+
+        ax2.hlines(
+            y=pre_egg_crack_total,
+            xmin=mdates.date2num(egg_crack_date),
+            xmax=mdates.date2num(df["Timestamp"].iloc[-1]),
+            color="#d62728",
+            linewidth=2,
+            linestyle=":",
+            alpha=0.8,
+            label=f"Cumulative Selfies at Egg Crack ({pre_egg_crack_total})",
+        )
+
+        ax2.plot(
+            x_after,
+            y_cum_after,
+            color="#9467bd",
+            linewidth=1.5,
+            linestyle="-",
+            drawstyle="steps-post",
+            label=f"Cumulative From Egg Crack Forward (0-{SELFIE_Y_AXIS*CUMULATIVE_SCALE_FACTOR})",
+        )
+        ax2.fill_between(x_after, y_cum_after, step="post", color="#9467bd", alpha=0.15)
 
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
@@ -213,45 +247,38 @@ def main():
         )
         return (current_total / 400) * 100
 
-    for cutoff in WORLD_CUTOFFS:
-        cutoff_date = pd.to_datetime(cutoff["date"], format="%Y-%m")
-        ax.axvline(
-            x=cutoff_date, color="#505050", linestyle="--", linewidth=1.5, alpha=0.5
-        )
-        ax.text(
-            x=cutoff_date + pd.DateOffset(days=5),
-            y=dynamic_y_pos(cutoff_date) + 6,
-            s=f"{cutoff['label']}",
-            color="#505050",
-            fontsize=10,
-            fontweight="bold",
-            rotation=90,
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            clip_on=False,
-        )
+    if "--cutoffs" in sys.argv:
+        cutoffs = []
 
-    for cutoff in TRANSITION_CUTOFFS:
-        cutoff_date = pd.to_datetime(cutoff["date"], format="%Y-%m")
-        ax.axvline(
-            x=cutoff_date, color="#3e8eab", linestyle="--", linewidth=1.5, alpha=0.5
-        )
-        ax.text(
-            x=cutoff_date + pd.DateOffset(days=5),
-            y=dynamic_y_pos(cutoff_date) + 6,
-            s=f"{cutoff['label']}",
-            color="#F5A9B8",
-            fontsize=10,
-            fontweight="bold",
-            rotation=90,
-            horizontalalignment="left",
-            verticalalignment="bottom",
-            clip_on=False,
-        )
+        for option in sys.argv[sys.argv.index("--cutoffs") :]:
+            if option in CUTOFFS:
+                cutoffs += CUTOFFS[option]
 
-    ax.set_ylabel("Selfies", color="#1f77b4")
+        for cutoff in cutoffs:
+            cutoff_date = pd.to_datetime(cutoff.date, format="%Y-%m")
+            ax.axvline(
+                x=cutoff_date,
+                color=cutoff.line_color,
+                linestyle="--",
+                linewidth=1.5,
+                alpha=0.5,
+            )
+            ax.text(
+                x=cutoff_date + pd.DateOffset(days=5),
+                y=dynamic_y_pos(cutoff_date) + 6,
+                s=f"{cutoff.label}",
+                color=cutoff.text_color,
+                fontsize=10,
+                fontweight="bold",
+                rotation=90,
+                horizontalalignment="left",
+                verticalalignment="bottom",
+                clip_on=False,
+            )
+
+    ax.set_ylabel(f"Selfies (0-{SELFIE_Y_AXIS})", color="#1f77b4")
     ax.tick_params(axis="y", labelcolor="#1f77b4")
-    ax2.set_ylabel("Running Cumulative Total", color="#2ca02c")
+    ax2.set_ylabel(f"Selfies (0-{SELFIE_Y_AXIS*CUMULATIVE_SCALE_FACTOR})", color="#2ca02c")
     ax2.tick_params(axis="y", labelcolor="#2ca02c")
     ax.set_xlabel("Year")
     ax.set_title("Selfies between 2019-2026")
@@ -265,7 +292,7 @@ def main():
 
     fig.autofmt_xdate()
     plt.tight_layout()
-    plt.savefig("monthly_counts_line_chart.png")
+    plt.savefig("monthly_counts_line_chart.svg")
 
 
 if __name__ == "__main__":

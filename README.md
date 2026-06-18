@@ -2,4 +2,4 @@
 
 Tracking selfies over my lifetime.
 
-![Selfies over my lifetime](./monthly_counts_line_chart.png)
+![Selfies over my lifetime](./monthly_counts_line_chart.svg)
