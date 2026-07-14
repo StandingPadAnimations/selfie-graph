@@ -13,8 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import argparse
 from dataclasses import dataclass
-import sys
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -65,6 +65,7 @@ DATA = {
         "2026-04",
         "2026-05",
         "2026-06",
+        "2026-07"
     ],
     "Selfies": [
         5,
@@ -106,7 +107,8 @@ DATA = {
         21,
         17,
         5,
-        6,
+        13,
+        9
     ],
 }
 
@@ -145,6 +147,12 @@ CUTOFFS: dict[str, list[CutOff]] = {
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    _ = parser.add_argument("--q-mean", action="store_true")
+    _ = parser.add_argument("--sum-egg-crack", action="store_true")
+    _ = parser.add_argument("--cutoffs", metavar="cutoff", nargs="+")
+    args = parser.parse_args()
+
     df = pd.DataFrame(DATA)
     df["Timestamp"] = pd.to_datetime(df["Date_Label"], format="%Y-%m")
     df = df.sort_values("Timestamp")
@@ -167,7 +175,7 @@ def main():
     y_cumulative = df["Selfies"].cumsum().values
 
     ax2 = ax.twinx()
-    if "--q-mean" in sys.argv:
+    if args.q_mean:
         df_time_indexed = df.set_index("Timestamp").sort_index()
         df_monthly_filled = df_time_indexed.resample("MS").asfreq().fillna(0)
         df_quarterly_average = df_monthly_filled.resample("QE")["Selfies"].mean()
@@ -199,7 +207,7 @@ def main():
     )
     ax2.fill_between(x_numeric, y_cumulative, step="post", color="#2ca02c", alpha=0.05)
 
-    if "--sum-egg-crack" in sys.argv:
+    if args.sum_egg_crack:
         egg_crack_date = pd.to_datetime(CUTOFFS["transition"][0].date, format="%Y-%m")
         before_mask = df["Timestamp"] <= egg_crack_date
         after_mask = df["Timestamp"] >= egg_crack_date
@@ -247,10 +255,10 @@ def main():
         )
         return (current_total / 400) * 100
 
-    if "--cutoffs" in sys.argv:
+    if args.cutoffs:
         cutoffs = []
 
-        for option in sys.argv[sys.argv.index("--cutoffs") :]:
+        for option in args.cutoffs:
             if option in CUTOFFS:
                 cutoffs += CUTOFFS[option]
 
