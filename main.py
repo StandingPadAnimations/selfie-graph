@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Maryam Sheikh (Mahid Sheikh) <mahid@standingpad.org>
+# Copyright (C) 2026 Maryam Sheikh <maryam@standingpad.org>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,6 +15,9 @@
 
 import argparse
 from dataclasses import dataclass
+import json
+from pathlib import Path
+from typing import TypedDict
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -22,96 +25,6 @@ import pandas as pd
 
 SELFIE_Y_AXIS = 100
 CUMULATIVE_SCALE_FACTOR = 4
-
-DATA = {
-    "Date_Label": [
-        "2019-10",
-        "2019-11",
-        "2019-12",
-        "2020-02",
-        "2020-03",
-        "2020-05",
-        "2020-12",
-        "2021-08",
-        "2021-09",
-        "2021-12",
-        "2022-02",
-        "2022-03",
-        "2022-05",
-        "2022-06",
-        "2022-07",
-        "2022-08",
-        "2022-09",
-        "2022-10",
-        "2022-11",
-        "2022-12",
-        "2023-01",
-        "2023-05",
-        "2023-06",
-        "2023-08",
-        "2023-09",
-        "2023-10",
-        "2023-11",
-        "2024-07",
-        "2025-02",
-        "2025-05",
-        "2025-09",
-        "2025-10",
-        "2025-11",
-        "2025-12",
-        "2026-01",
-        "2026-02",
-        "2026-03",
-        "2026-04",
-        "2026-05",
-        "2026-06",
-        "2026-07"
-    ],
-    "Selfies": [
-        5,
-        2,
-        4,
-        2,
-        3,
-        1,
-        4,
-        3,
-        2,
-        2,
-        1,
-        2,
-        2,
-        3,
-        2,
-        11,
-        1,
-        3,
-        4,
-        1,
-        1,
-        1,
-        1,
-        1,
-        8,
-        2,
-        1,
-        6,
-        1,
-        2,
-        4,
-        14,
-        8,
-        21,
-        8,
-        15,
-        21,
-        17,
-        5,
-        13,
-        9
-    ],
-}
-
 
 @dataclass
 class CutOff:
@@ -135,9 +48,9 @@ CUTOFFS: dict[str, list[CutOff]] = {
         ),  # One month earlier to avoid clipping with transition timelines
     ],
     "event": [
-        CutOff("2020-03", "COVID-19 Lockdowns"),
-        CutOff("2021-01", "Biden Presidency"),
-        CutOff("2025-01", "Trump Presidency"),
+        CutOff("2020-03", "Start of COVID-19 Lockdowns"),
+        CutOff("2021-01", "Start of Biden Presidency"),
+        CutOff("2025-01", "Start of Trump Presidency"),
     ],
     "life": [
         CutOff("2021-11", "Transition to MKA"),
@@ -145,15 +58,31 @@ CUTOFFS: dict[str, list[CutOff]] = {
     ],
 }
 
+class DataJSON(TypedDict):
+    Date_Label: list[str]
+    Selfies: list[int]
+
+def load_data_from_json(file: Path) -> DataJSON | None:
+    if not file.exists() or not file.is_file():
+        return
+    with open(file, "r") as f:
+        data = json.load(f)
+    return data
 
 def main():
     parser = argparse.ArgumentParser()
+    _ = parser.add_argument("data_json", type=Path)
     _ = parser.add_argument("--q-mean", action="store_true")
     _ = parser.add_argument("--sum-egg-crack", action="store_true")
     _ = parser.add_argument("--cutoffs", metavar="cutoff", nargs="+")
     args = parser.parse_args()
 
-    df = pd.DataFrame(DATA)
+    data = load_data_from_json(args.data_json)
+    if not data:
+        print("Could not load data")
+        return
+
+    df = pd.DataFrame(data)
     df["Timestamp"] = pd.to_datetime(df["Date_Label"], format="%Y-%m")
     df = df.sort_values("Timestamp")
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -227,7 +156,7 @@ def main():
             linewidth=2,
             linestyle=":",
             alpha=0.8,
-            label=f"Cumulative Selfies at Egg Crack ({pre_egg_crack_total})",
+            label=f"Cumulative Selfies at Egg Crack ({pre_egg_crack_total} out of {SELFIE_Y_AXIS*CUMULATIVE_SCALE_FACTOR})",
         )
 
         ax2.plot(
